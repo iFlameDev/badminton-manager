@@ -38,11 +38,11 @@ function App() {
                 localStorage.setItem('host_tournaments', JSON.stringify(hostTourneys));
               }
               await supabase.from('tournaments').update({ otp: null }).eq('id', id);
-              window.history.replaceState({}, '', `/${id}`);
+              window.history.replaceState({}, '', `${window.location.pathname}?id=${id}`);
               alert("Akses Host Berhasil!");
             } else {
               setInvalidOtp(true);
-              window.history.replaceState({}, '', `/${id}`);
+              window.history.replaceState({}, '', `${window.location.pathname}?id=${id}`);
             }
           } catch(e) {}
         }

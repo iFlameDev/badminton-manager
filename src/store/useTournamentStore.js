@@ -113,6 +113,20 @@ export const useTournamentStore = create((set, get) => ({
           lastModified: data.state.lastModified || null,
           currentView: 'manager'
         });
+
+        if (isHostUser) {
+          const historyItem = {
+            id: id,
+            name: data.state.config.name || 'Padel Tournament',
+            createdAt: data.state.createdAt,
+            playersCount: data.state.players.filter(p => !p.isWalkout).length,
+            courtsCount: data.state.numCourts
+          };
+          let history = JSON.parse(localStorage.getItem('padel_history') || '[]');
+          history = history.filter(h => h.id !== id);
+          history.unshift(historyItem);
+          localStorage.setItem('padel_history', JSON.stringify(history));
+        }
         
         // Ensure activeRoundTab is valid
         const st = get();
