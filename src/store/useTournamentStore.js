@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import { supabase } from '../lib/supabaseClient';
+
+let syncTimeout = null;
 
 function gcd(a, b) {
   return b === 0 ? a : gcd(b, a % b);
@@ -9,6 +12,12 @@ export const useTournamentStore = create((set, get) => ({
   currentView: 'setup', // 'setup', 'manager', 'config'
   viewMode: 'pager', // 'pager', 'list'
   activeRoundTab: 1,
+
+  // Supabase State
+  tournamentId: null,
+  isHost: true,
+  createdAt: null,
+  lastModified: null,
 
   // Tournament Data
   config: {
@@ -21,7 +30,6 @@ export const useTournamentStore = create((set, get) => ({
     sort: 'points',
     bonus: 0,
     restBonus: 0,
-    dynamicRound: false,
   },
   numCourts: 1,
   customCourtNames: {},
@@ -37,14 +45,89 @@ export const useTournamentStore = create((set, get) => ({
   setActiveRoundTab: (tab) => set({ activeRoundTab: tab }),
 
   // --- ACTIONS: CONFIG & PLAYERS ---
-  updateConfig: (updates) => set((state) => ({ config: { ...state.config, ...updates } })),
+  updateConfig: (updates) => {
+    set((state) => ({ config: { ...state.config, ...updates } }));
+    get().syncToSupabase();
+  },
   setNumCourts: (num) => set({ numCourts: num }),
   setCustomCourtNames: (names) => set({ customCourtNames: names }),
   setPlayers: (players) => set({ players }),
   setPlayerIdCounter: (count) => set({ playerIdCounter: count }),
 
   // --- ACTIONS: ENGINES ---
-  startTournament: (parsedPlayers, newNumCourts, newConfig, newCourtNames) => {
+  syncToSupabase: () => {
+    const state = get();
+    if (!state.tournamentId || !state.isHost) return;
+
+    if (syncTimeout) clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(async () => {
+      const now = new Date().toISOString();
+      set({ lastModified: now });
+      const finalState = get();
+
+      const payload = {
+        config: finalState.config,
+        numCourts: finalState.numCourts,
+        customCourtNames: finalState.customCourtNames,
+        players: finalState.players,
+        matches: finalState.matches,
+        currentRound: finalState.currentRound,
+        playerIdCounter: finalState.playerIdCounter,
+        isTournamentStarted: finalState.isTournamentStarted,
+        createdAt: finalState.createdAt,
+        lastModified: finalState.lastModified
+      };
+      
+      try {
+        await supabase
+          .from('tournaments')
+          .update({ state: payload })
+          .eq('id', finalState.tournamentId);
+      } catch (e) {
+        console.error('Failed to sync', e);
+      }
+    }, 500);
+  },
+
+  loadFromSupabase: async (id, isHostUser) => {
+    try {
+      const { data, error } = await supabase
+        .from('tournaments')
+        .select('state')
+        .eq('id', id)
+        .single();
+      
+      if (data && data.state) {
+        set({
+          tournamentId: id,
+          isHost: isHostUser,
+          config: data.state.config,
+          numCourts: data.state.numCourts,
+          customCourtNames: data.state.customCourtNames,
+          players: data.state.players,
+          matches: data.state.matches,
+          currentRound: data.state.currentRound,
+          playerIdCounter: data.state.playerIdCounter,
+          isTournamentStarted: data.state.isTournamentStarted,
+          createdAt: data.state.createdAt || null,
+          lastModified: data.state.lastModified || null,
+          currentView: 'manager'
+        });
+        
+        // Ensure activeRoundTab is valid
+        const st = get();
+        if (st.currentRound > 0) {
+          set({ activeRoundTab: st.currentRound });
+        }
+      } else {
+        console.error("Tournament not found", error);
+      }
+    } catch (e) {
+      console.error('Failed to load from Supabase', e);
+    }
+  },
+
+  startTournament: async (parsedPlayers, newNumCourts, newConfig, newCourtNames) => {
     const state = get();
     let newPlayerId = state.playerIdCounter;
     let newPlayersArray = [];
@@ -126,6 +209,59 @@ export const useTournamentStore = create((set, get) => ({
     if (!updatedState.isTournamentStarted) {
       set({ isTournamentStarted: true });
       updatedState.generateNextRound();
+    }
+
+    // Save to Supabase initially
+    const finalState = get();
+    const now = new Date().toISOString();
+    
+    // We update Zustand with dates before saving
+    set({ createdAt: now, lastModified: now });
+    const stateWithDates = get();
+
+    const payload = {
+      config: stateWithDates.config,
+      numCourts: stateWithDates.numCourts,
+      customCourtNames: stateWithDates.customCourtNames,
+      players: stateWithDates.players,
+      matches: stateWithDates.matches,
+      currentRound: stateWithDates.currentRound,
+      playerIdCounter: stateWithDates.playerIdCounter,
+      isTournamentStarted: stateWithDates.isTournamentStarted,
+      createdAt: stateWithDates.createdAt,
+      lastModified: stateWithDates.lastModified
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('tournaments')
+        .insert([{ state: payload }])
+        .select('id');
+
+        window.localStorage.setItem('padel_host_' + data[0].id, 'true');
+        window.history.replaceState({}, '', `?id=${data[0].id}`);
+        set({ tournamentId: data[0].id, isHost: true });
+        
+        let hostTourneys = JSON.parse(localStorage.getItem('host_tournaments') || '[]');
+        if (!hostTourneys.includes(data[0].id)) {
+          hostTourneys.push(data[0].id);
+          localStorage.setItem('host_tournaments', JSON.stringify(hostTourneys));
+        }
+
+        const historyItem = {
+          id: data[0].id,
+          name: stateWithDates.config.name || 'Padel Tournament',
+          createdAt: stateWithDates.createdAt,
+          playersCount: stateWithDates.players.filter(p => !p.isWalkout).length,
+          courtsCount: stateWithDates.numCourts
+        };
+        let history = JSON.parse(localStorage.getItem('padel_history') || '[]');
+        // remove existing with same ID if any, then add to top
+        history = history.filter(h => h.id !== data[0].id);
+        history.unshift(historyItem);
+        localStorage.setItem('padel_history', JSON.stringify(history));
+    } catch (e) {
+      console.error('Failed to create tournament', e);
     }
   },
 
@@ -219,6 +355,7 @@ export const useTournamentStore = create((set, get) => ({
       matches: nextMatches,
       activeRoundTab: nextRound,
     });
+    get().syncToSupabase();
   },
 
   setScore: (matchKey, scoreVal, teamIndex) => {
@@ -241,39 +378,19 @@ export const useTournamentStore = create((set, get) => ({
     }
 
     set({ matches: { ...state.matches, [matchKey]: newMatch } });
+    get().syncToSupabase();
 
-    // Check Auto Advance
-    if (scoreVal !== null) {
-      if (state.config.dynamicRound) {
-        if (newMatch.score1 !== null && newMatch.score2 !== null) {
-          setTimeout(() => {
-            const latestState = get();
-            const checkMatch = latestState.matches[matchKey];
-            if (checkMatch && checkMatch.score1 !== null && checkMatch.score2 !== null) {
-              latestState.generateMatchForCourt(checkMatch.court);
-            }
-          }, 1000);
-        }
-      } else {
-        const latestState = get();
-        const currentRoundMatches = Object.values(latestState.matches).filter(
-          (m) => m.round === latestState.currentRound
-        );
-        const isAllScored =
-          currentRoundMatches.length === state.numCourts &&
-          currentRoundMatches.every((m) => m.score1 !== null && m.score2 !== null);
-        
-        if (isAllScored) {
-          setTimeout(() => {
-            const latestState = get();
-            const checkMatches = Object.values(latestState.matches).filter(
-              (m) => m.round === latestState.currentRound
-            );
-            if (checkMatches.every((m) => m.score1 !== null && m.score2 !== null)) {
-              latestState.generateNextRound();
-            }
-          }, 1000);
-        }
+    // Auto-advance only for lagging courts (Dynamic mode)
+    if (scoreVal !== null && newMatch.score1 !== null && newMatch.score2 !== null) {
+      const latestState = get();
+      if (newMatch.round < latestState.currentRound) {
+        setTimeout(() => {
+          const checkState = get();
+          const checkMatch = checkState.matches[matchKey];
+          if (checkMatch && checkMatch.score1 !== null && checkMatch.score2 !== null) {
+            checkState.generateMatchForCourt(checkMatch.court);
+          }
+        }, 800);
       }
     }
   },
@@ -337,6 +454,43 @@ export const useTournamentStore = create((set, get) => ({
     let newCurrentRound = Math.max(state.currentRound, nextRound);
 
     set({ players: updatedPlayers, matches: nextMatches, currentRound: newCurrentRound });
+    get().syncToSupabase();
+  },
+
+  triggerNextRound: () => {
+    const state = get();
+    let latestMatches = {};
+    for (let i = 1; i <= state.numCourts; i++) {
+       let courtMatches = Object.values(state.matches).filter(m => m.court === i);
+       if (courtMatches.length > 0) {
+          latestMatches[i] = courtMatches.reduce((max, m) => m.round > max.round ? m : max, courtMatches[0]);
+       }
+    }
+
+    let readyCourts = [];
+    let allReady = true;
+    for (let i = 1; i <= state.numCourts; i++) {
+       let lm = latestMatches[i];
+       if (lm && lm.score1 !== null && lm.score2 !== null) {
+          readyCourts.push(i);
+       } else {
+          allReady = false;
+       }
+    }
+
+    if (readyCourts.length === 0) return;
+
+    if (allReady) {
+       let rounds = Object.values(latestMatches).map(m => m.round);
+       let sameRound = rounds.every(r => r === rounds[0]);
+       if (sameRound) {
+          get().generateNextRound();
+       } else {
+          readyCourts.forEach(c => get().generateMatchForCourt(c));
+       }
+    } else {
+       readyCourts.forEach(c => get().generateMatchForCourt(c));
+    }
   },
 
   executeSwap: (matchKey, selectedSlot, newPlayerId) => {
@@ -392,6 +546,7 @@ export const useTournamentStore = create((set, get) => ({
     });
 
     set({ matches: nextMatches, players: nextPlayers });
+    get().syncToSupabase();
   },
 
   getLeaderboardStats: () => {

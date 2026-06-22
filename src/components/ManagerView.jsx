@@ -21,7 +21,7 @@ export default function ManagerView() {
   const { 
     currentView, config, numCourts, customCourtNames, players, 
     matches, currentRound, activeRoundTab, setActiveRoundTab,
-    getBalanceText
+    getBalanceText, triggerNextRound, isHost
   } = useTournamentStore();
 
   const [managerTab, setManagerTab] = useState('rounds'); // 'rounds' or 'leaderboard'
@@ -34,6 +34,24 @@ export default function ManagerView() {
   const activeMatches = Object.values(matches).filter(m => m.round === activeRoundTab);
   const showMarking = config.type.includes('marked');
   const activeCount = players.filter(p => !p.isWalkout).length;
+
+  let latestMatches = {};
+  for (let i = 1; i <= numCourts; i++) {
+     let courtMatches = Object.values(matches).filter(m => m.court === i);
+     if (courtMatches.length > 0) {
+        latestMatches[i] = courtMatches.reduce((max, m) => m.round > max.round ? m : max, courtMatches[0]);
+     }
+  }
+
+  let readyCourts = [];
+  for (let i = 1; i <= numCourts; i++) {
+     let lm = latestMatches[i];
+     if (lm && lm.score1 !== null && lm.score2 !== null) {
+        readyCourts.push(i);
+     }
+  }
+  const canNextRound = readyCourts.length > 0;
+  const isLatestRoundTab = activeRoundTab === currentRound;
   
   return (
     <div className="w-full flex flex-col h-full fade-in relative bg-slate-900">
@@ -54,7 +72,7 @@ export default function ManagerView() {
             <div className="flex items-center gap-1.5">{config.maxPoints} Points Max</div>
           </div>
           <div className="mt-3 pt-3 border-t border-slate-700/50 text-center text-xs font-bold text-emerald-400">
-            {config.dynamicRound ? 'Dynamic Matchmaking Active' : `Balance in: ${getBalanceText()}`}
+            Balance in: {getBalanceText()}
           </div>
         </div>
 
@@ -152,32 +170,51 @@ export default function ManagerView() {
                     return (
                       <div key={matchKey} className="relative bg-slate-800 rounded-xl shadow border border-slate-700 group mt-4 hover:border-slate-600 transition">
                         <div className="absolute -top-6 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
-                          <div onClick={() => setScoreModalState({ isOpen: true, matchKey, teamIndex: 1 })} className={clsx("w-14 h-14 flex items-center justify-center font-bold text-3xl rounded-xl shadow transition transform cursor-pointer active:scale-95 border", sc1)}>
+                          <div onClick={() => isHost && setScoreModalState({ isOpen: true, matchKey, teamIndex: 1 })} className={clsx("w-14 h-14 flex items-center justify-center font-bold text-3xl rounded-xl shadow transition transform border", isHost ? "cursor-pointer active:scale-95" : "cursor-default", sc1)}>
                             {s1}
                           </div>
-                          <div onClick={() => setScoreModalState({ isOpen: true, matchKey, teamIndex: 2 })} className={clsx("w-14 h-14 flex items-center justify-center font-bold text-3xl rounded-xl shadow transition transform cursor-pointer active:scale-95 border", sc2)}>
+                          <div onClick={() => isHost && setScoreModalState({ isOpen: true, matchKey, teamIndex: 2 })} className={clsx("w-14 h-14 flex items-center justify-center font-bold text-3xl rounded-xl shadow transition transform border", isHost ? "cursor-pointer active:scale-95" : "cursor-default", sc2)}>
                             {s2}
                           </div>
                         </div>
 
                         <div className="flex h-full min-h-[100px]">
-                          <div onClick={() => setScoreModalState({ isOpen: true, matchKey, teamIndex: 1 })} className={clsx("w-1/2 pt-6 pb-6 border-r border-slate-700 px-3 sm:px-5 flex flex-col justify-center gap-3 cursor-pointer hover:bg-slate-700/50 transition rounded-l-xl", t1WinClass)}>
+                          <div onClick={() => isHost && setScoreModalState({ isOpen: true, matchKey, teamIndex: 1 })} className={clsx("w-1/2 pt-6 pb-6 border-r border-slate-700 px-3 sm:px-5 flex flex-col justify-center gap-3 transition rounded-l-xl", isHost ? "cursor-pointer hover:bg-slate-700/50" : "cursor-default", t1WinClass)}>
                             <div className="text-[15px] font-medium text-slate-200 truncate flex items-center gap-2">{renderTier(p1.tier)} {p1.name}</div>
                             <div className="text-[15px] font-medium text-slate-200 truncate flex items-center gap-2">{renderTier(p2.tier)} {p2.name}</div>
                           </div>
-                          <div onClick={() => setScoreModalState({ isOpen: true, matchKey, teamIndex: 2 })} className={clsx("w-1/2 pt-6 pb-6 px-3 sm:px-5 flex flex-col justify-center gap-3 text-right cursor-pointer hover:bg-slate-700/50 transition rounded-r-xl", t2WinClass)}>
+                          <div onClick={() => isHost && setScoreModalState({ isOpen: true, matchKey, teamIndex: 2 })} className={clsx("w-1/2 pt-6 pb-6 px-3 sm:px-5 flex flex-col justify-center gap-3 text-right transition rounded-r-xl", isHost ? "cursor-pointer hover:bg-slate-700/50" : "cursor-default", t2WinClass)}>
                             <div className="text-[15px] font-medium text-slate-200 truncate flex items-center justify-end gap-2">{p3.name} {renderTier(p3.tier)}</div>
                             <div className="text-[15px] font-medium text-slate-200 truncate flex items-center justify-end gap-2">{p4.name} {renderTier(p4.tier)}</div>
                           </div>
                         </div>
 
-                        <div onClick={() => setSwapModalState({ isOpen: true, matchKey })} className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[11px] bg-slate-900 text-slate-300 px-4 py-1.5 rounded-full border border-slate-700 flex gap-2 items-center cursor-pointer hover:bg-slate-800 transition shadow z-20">
-                          <Edit3 className="w-3.5 h-3.5 text-slate-400" />
-                          {cName}
-                        </div>
+                        {isHost && (
+                          <div onClick={() => setSwapModalState({ isOpen: true, matchKey })} className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[11px] bg-slate-900 text-slate-300 px-4 py-1.5 rounded-full border border-slate-700 flex gap-2 items-center cursor-pointer hover:bg-slate-800 transition shadow z-20">
+                            <Edit3 className="w-3.5 h-3.5 text-slate-400" />
+                            {cName}
+                          </div>
+                        )}
+                        {!isHost && (
+                          <div className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[11px] bg-slate-900 text-slate-500 px-4 py-1.5 rounded-full border border-slate-800 flex gap-2 items-center z-20">
+                            {cName}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Next Round Button */}
+              {isLatestRoundTab && canNextRound && isHost && (
+                <div className="mt-8 mb-6 flex justify-center">
+                  <button
+                    onClick={() => triggerNextRound()}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3.5 rounded-2xl font-bold text-lg shadow-lg shadow-emerald-900/50 transition transform hover:scale-105 active:scale-95 border border-emerald-500 w-full md:w-auto"
+                  >
+                    Generate Next Round
+                  </button>
                 </div>
               )}
             </div>

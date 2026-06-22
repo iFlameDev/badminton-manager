@@ -4,9 +4,9 @@ import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function ScoreModal({ isOpen, matchKey, teamIndex, onClose }) {
-  const { config, matches, players, customCourtNames, setScore } = useTournamentStore();
+  const { config, matches, players, customCourtNames, setScore, isHost } = useTournamentStore();
 
-  if (!isOpen || !matchKey) return null;
+  if (!isOpen || !matchKey || !isHost) return null;
 
   const m = matches[matchKey];
   if (!m) return null;

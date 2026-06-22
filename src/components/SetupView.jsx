@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTournamentStore } from '../store/useTournamentStore';
-import { FileText, List, X, Plus, HelpCircle } from 'lucide-react';
+import { FileText, List, X, Plus, HelpCircle, History } from 'lucide-react';
 import clsx from 'clsx';
 
 export default function SetupView() {
@@ -16,6 +16,21 @@ export default function SetupView() {
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [playerRows, setPlayerRows] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyList, setHistoryList] = useState([]);
+
+  const formatDate = (isoString) => {
+    if (!isoString) return '-';
+    return new Date(isoString).toLocaleString('id-ID', {
+      day: '2-digit', month: 'short', year: 'numeric', 
+      hour: '2-digit', minute: '2-digit'
+    });
+  };
+
+  useEffect(() => {
+    const storedHistory = JSON.parse(localStorage.getItem('padel_history') || '[]');
+    setHistoryList(storedHistory);
+  }, []);
 
   useEffect(() => {
     // Sync with global store when mounting setup or config view
@@ -152,8 +167,14 @@ export default function SetupView() {
         
         {/* Tournament Info */}
         <div className="bg-slate-900/80 p-4 md:p-5 rounded-xl border border-slate-700/80 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2 border-b border-slate-700/50 pb-2 mb-2">
+          <div className="md:col-span-2 border-b border-slate-700/50 pb-2 mb-2 flex justify-between items-center">
             <h2 className="text-lg font-bold text-amber-400">Tournament Info</h2>
+            {!isDisabled && currentView === 'setup' && historyList.length > 0 && (
+              <button onClick={() => setShowHistory(true)} className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-600 transition flex items-center gap-1.5">
+                <History className="w-3.5 h-3.5 text-slate-400" />
+                History
+              </button>
+            )}
           </div>
           
           <div className="md:col-span-2">
@@ -182,47 +203,18 @@ export default function SetupView() {
             </div>
           </div>
           
-          <div className="flex gap-3 md:col-span-2">
-            <div className="w-1/2">
-              <label className="text-[10px] text-slate-400 font-mono uppercase mb-1 block">Poin per Round</label>
+          <div className="grid grid-cols-3 gap-3 md:col-span-2">
+            <div>
+              <label className="text-[10px] text-slate-400 font-mono uppercase mb-1 block">Poin / Round</label>
               <input type="number" name="maxPoints" value={localConfig.maxPoints} onChange={handleConfigChange} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-emerald-400 text-sm outline-none text-center font-bold focus:ring-1 focus:ring-emerald-500 transition disabled:opacity-50" disabled={isDisabled} />
             </div>
-            <div className="w-1/2 flex flex-col justify-end pb-1.5">
-              <div className="flex items-center gap-2">
-                <button 
-                  type="button"
-                  disabled={isDisabled}
-                  onClick={() => !isDisabled && handleConfigChange({ target: { name: 'dynamicRound', value: !localConfig.dynamicRound, type: 'checkbox', checked: !localConfig.dynamicRound } })}
-                  className={clsx(
-                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50",
-                    localConfig.dynamicRound ? "bg-emerald-500" : "bg-slate-600"
-                  )}
-                >
-                  <span className={clsx(
-                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                    localConfig.dynamicRound ? "translate-x-6" : "translate-x-1"
-                  )} />
-                </button>
-                <span className="text-sm font-medium text-slate-300">Dynamic Round</span>
-                
-                <div className="relative group cursor-pointer z-20">
-                  <HelpCircle className="w-4 h-4 text-slate-400 hover:text-emerald-400 transition" />
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 bg-slate-800 text-slate-200 text-xs p-2.5 rounded-xl border border-slate-600 shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
-                    Begitu lapangan selesai, 4 pemain istirahat otomatis ditarik main tanpa tunggu lapangan lain selesai. (Menghapus sistem Ronde Serentak).
-                  </div>
-                </div>
-              </div>
+            <div>
+              <label className="text-[10px] text-slate-400 font-mono uppercase mb-1 block">Win Bonus</label>
+              <input type="number" name="bonus" value={localConfig.bonus} onChange={handleConfigChange} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white text-sm outline-none text-center focus:ring-1 focus:ring-emerald-500 transition disabled:opacity-50" disabled={isDisabled} />
             </div>
-          </div>
-          
-          <div className="flex gap-3 md:col-span-2">
-            <div className="w-1/2">
-              <label className="text-[10px] text-slate-400 font-mono uppercase mb-1 block">Win Bonus (Pts)</label>
-              <input type="number" name="bonus" value={localConfig.bonus} onChange={handleConfigChange} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white text-sm outline-none text-center focus:ring-1 focus:ring-emerald-500 transition" />
-            </div>
-            <div className="w-1/2">
-              <label className="text-[10px] text-slate-400 font-mono uppercase mb-1 block">Rest Bonus (Pts)</label>
-              <input type="number" name="restBonus" value={localConfig.restBonus} onChange={handleConfigChange} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white text-sm outline-none text-center focus:ring-1 focus:ring-emerald-500 transition" />
+            <div>
+              <label className="text-[10px] text-slate-400 font-mono uppercase mb-1 block">Rest Bonus</label>
+              <input type="number" name="restBonus" value={localConfig.restBonus} onChange={handleConfigChange} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white text-sm outline-none text-center focus:ring-1 focus:ring-emerald-500 transition disabled:opacity-50" disabled={isDisabled} />
             </div>
           </div>
           {isDisabled && (
@@ -340,6 +332,40 @@ export default function SetupView() {
           {currentView === 'config' ? 'Save Changes' : 'Start Tournament'}
         </button>
       </div>
+
+      {/* History Modal */}
+      {showHistory && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm fade-in">
+          <div className="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl max-w-md w-full p-5 relative flex flex-col max-h-[85vh]">
+            <button onClick={() => setShowHistory(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white transition bg-slate-700/50 hover:bg-slate-600 rounded-full p-1.5 z-10">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-700/50 pb-3 flex items-center gap-2 pr-8 tracking-tight">
+              <History className="w-5 h-5 text-emerald-400" />
+              Tournament History
+            </h3>
+            <div className="overflow-y-auto space-y-3 pr-1 pb-2 flex-grow hide-scrollbar">
+              {historyList.map((h, i) => (
+                <div key={i} className="bg-slate-900 border border-slate-700 rounded-xl p-3.5 flex flex-col gap-2.5 group hover:border-slate-500 transition shadow">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="font-bold text-slate-200 text-sm leading-tight">{h.name}</div>
+                    <div className="text-[9px] text-slate-400 bg-slate-800 px-2 py-1 rounded-md border border-slate-700 shrink-0 uppercase tracking-wider">{formatDate(h.createdAt)}</div>
+                  </div>
+                  <div className="flex justify-between items-end">
+                    <div className="text-xs text-slate-400 flex gap-4 font-medium bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700/50">
+                      <span className="flex gap-1 items-center"><b className="text-amber-400">{h.playersCount}</b> Players</span>
+                      <span className="flex gap-1 items-center"><b className="text-emerald-400">{h.courtsCount}</b> Courts</span>
+                    </div>
+                    <a href={`?id=${h.id}`} className="text-[11px] bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition font-bold shadow-lg shadow-blue-900/50 flex items-center gap-1.5">
+                      Buka
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -15,7 +15,7 @@ function getTierStyle(tier) {
 }
 
 export default function SwapModal({ isOpen, matchKey, onClose }) {
-  const { matches, players, customCourtNames, executeSwap, config } = useTournamentStore();
+  const { matches, players, customCourtNames, executeSwap, config, isHost } = useTournamentStore();
   const showMarking = config.type.includes('marked');
   const [selectedSlot, setSelectedSlot] = useState(null); // { team: 1|2, index: 0|1 }
   const [lastSwappedSlot, setLastSwappedSlot] = useState(null); // String representation to animate
