@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useTournamentStore } from '../store/useTournamentStore';
-import { Settings, CopyPlus, Share2, Users, ShieldAlert, Check } from 'lucide-react';
+import { Settings, CopyPlus, Share2, Users, ShieldAlert, Check, Eye, EyeOff } from 'lucide-react';
 import clsx from 'clsx';
 import { supabase } from '../lib/supabaseClient';
 
 export default function Header() {
-  const { currentView, setView, config, players, tournamentId, isHost } = useTournamentStore();
+  const { currentView, setView, config, players, tournamentId, isHost, showCourtTags, showMarkedTags, toggleCourtTags, toggleMarkedTags } = useTournamentStore();
   const [shareOpen, setShareOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
   
@@ -74,7 +74,7 @@ export default function Header() {
     <header className="shrink-0 mx-auto w-[calc(100%-2rem)] md:w-[calc(100%-3rem)] max-w-7xl bg-slate-800 shadow-lg p-4 rounded-2xl flex flex-row justify-between items-center gap-4 mt-4 z-30">
       <div className="flex items-center gap-4">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-emerald-400 tracking-tight">Padel Manager</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-emerald-400 tracking-tight">Badminton Manager</h1>
           <p className="text-amber-400 font-mono mt-0.5 text-xs">Powered by iFlameDev</p>
         </div>
       </div>
@@ -124,6 +124,25 @@ export default function Header() {
               </div>
             )}
             
+            {/* Toggle Court & Marked Tags */}
+            {isHost && (
+              <button
+                onClick={() => { toggleCourtTags(); toggleMarkedTags(); }}
+                className={clsx(
+                  "p-2.5 rounded-lg transition shadow shrink-0",
+                  (showCourtTags && showMarkedTags)
+                    ? "bg-emerald-600/90 hover:bg-emerald-500 text-white"
+                    : "bg-slate-700/80 hover:bg-slate-600 text-slate-300"
+                )}
+                title="Toggle Court & Marked Tags"
+              >
+                {(showCourtTags && showMarkedTags)
+                  ? <EyeOff className="w-5 h-5" />
+                  : <Eye className="w-5 h-5" />
+                }
+              </button>
+            )}
+
             {isHost && (
               <button 
                 onClick={() => isConfig ? setView('manager') : setView('config')} 

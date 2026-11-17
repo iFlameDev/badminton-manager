@@ -20,15 +20,13 @@ function getCourtStyle(courtId) {
 }
 
 export default function Leaderboard() {
-  const { currentView, getLeaderboardStats, config, customCourtNames } = useTournamentStore();
-  const { sortedPlayers, stats } = getLeaderboardStats();
+  const { currentView, getLeaderboardStats, config, customCourtNames, isHost, togglePlayerWalkout, showCourtTags, showMarkedTags } = useTournamentStore();
+  const { leaderboardItems, stats } = getLeaderboardStats();
 
   const isSetup = currentView === 'setup';
   if (isSetup) return null;
 
-  const winBonusCfg = config.bonus || 0;
-  const restBonusCfg = config.restBonus || 0;
-  const showMarking = config.type.includes('marked');
+  const showMarking = config.type.includes('marked') && showMarkedTags;
 
   return (
     <div className="w-full overflow-x-auto hide-scrollbar pb-20">
@@ -38,20 +36,19 @@ export default function Leaderboard() {
             <tr>
               <th className="px-3 py-4 text-center whitespace-nowrap w-10">#</th>
               <th className="pl-2 pr-3 py-4 whitespace-nowrap w-full">Player</th>
-              <th className="px-2 py-4 text-center whitespace-nowrap" title="Games Played">G</th>
               <th className="px-2 py-4 text-center whitespace-nowrap">W-L-T</th>
-              <th className="px-2 py-4 text-center whitespace-nowrap uppercase">Diff</th>
-              {(winBonusCfg > 0 || restBonusCfg > 0) && <th className="px-2 py-4 text-center whitespace-nowrap" title="Bonus Points">+M</th>}
               <th className="px-4 py-4 text-center whitespace-nowrap bg-slate-900/30">P</th>
             </tr>
           </thead>
           <tbody>
-            {sortedPlayers.map((p, index) => {
-              const s = stats[p.id];
-              const isPlaying = p.status === 'playing';
-              const isInactive = p.isWalkout;
+            {leaderboardItems.map((item, index) => {
+              const s = item.stats;
+              // playing status is true if ANY player in team is playing
+              const isPlaying = item.players.some(p => p.status === 'playing');
+              const isInactive = item.isWalkout;
               const hasStreak = s.streak >= 3;
-              const cName = customCourtNames[p.court] || `L${p.court}`;
+              const pCourt = item.players.find(p => p.status === 'playing')?.court;
+              const cName = pCourt ? (customCourtNames[pCourt] || `L${pCourt}`) : null;
 
               let medal = null;
               if (index === 0 && !isInactive) medal = "text-yellow-400";
@@ -59,29 +56,47 @@ export default function Leaderboard() {
               if (index === 2 && !isInactive) medal = "text-amber-600";
 
               return (
-                <tr key={p.id} className={clsx("border-b border-slate-700 hover:bg-slate-800 transition", isInactive && "opacity-50")}>
+                <tr key={item.id} className={clsx("border-b border-slate-700 hover:bg-slate-800 transition group", isInactive && "opacity-50")}>
                   <td className="px-3 py-4 text-center text-slate-500 font-bold text-xs w-10">
                     {medal ? <Medal className={`w-4 h-4 mx-auto ${medal}`} /> : index + 1}
                   </td>
                   <td className="pl-2 pr-3 py-4 flex flex-wrap items-center w-full">
-                    {isInactive && <span className="bg-red-900/50 text-red-400 border border-red-700/50 text-[9px] px-1.5 py-0.5 rounded font-bold mr-2 tracking-wider shrink-0 mb-1">OFF</span>}
-                    {showMarking && p.tier !== '-' && <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono font-bold mr-2 shrink-0 mb-1 ${getTierStyle(p.tier)}`}>{p.tier}</span>}
-                    <span className={clsx("break-words flex-grow min-w-0 mr-1", isPlaying ? "font-bold text-white" : "text-slate-300 font-medium", isInactive && "line-through decoration-slate-500")}>
-                      {p.name}
-                    </span>
+                    {isInactive ? (
+                      isHost && !item.isTeam ? (
+                        <button
+                          onClick={() => togglePlayerWalkout(item.players[0].id)}
+                          className="bg-red-900/60 hover:bg-emerald-700 text-red-300 hover:text-white border border-red-700/60 text-[9px] px-1.5 py-0.5 rounded font-bold mr-2 tracking-wider shrink-0 mb-1 transition cursor-pointer"
+                          title="Pemain OFF (Klik untuk aktifkan kembali)"
+                        >
+                          OFF
+                        </button>
+                      ) : (
+                        <span className="bg-red-900/50 text-red-400 border border-red-700/50 text-[9px] px-1.5 py-0.5 rounded font-bold mr-2 tracking-wider shrink-0 mb-1">OFF</span>
+                      )
+                    ) : (
+                      isHost && !item.isTeam && (
+                        <button
+                          onClick={() => togglePlayerWalkout(item.players[0].id)}
+                          className="opacity-0 group-hover:opacity-100 text-[9px] px-1.5 py-0.5 rounded font-bold mr-2 tracking-wider shrink-0 mb-1 border border-slate-700 hover:border-red-600 bg-slate-800 hover:bg-red-900/60 text-slate-400 hover:text-red-300 transition cursor-pointer"
+                          title="Set Pemain menjadi OFF (otomatis ganti pemain di lapangan)"
+                        >
+                          SET OFF
+                        </button>
+                      )
+                    )}
+                    {!item.isTeam && showMarking && item.players[0].tier !== '-' && <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono font-bold mr-2 shrink-0 mb-1 ${getTierStyle(item.players[0].tier)}`}>{item.players[0].tier}</span>}
+                    <div className={clsx("flex flex-col min-w-0 mr-1", isPlaying ? "font-bold text-white" : "text-slate-300 font-medium", isInactive && "line-through decoration-slate-500")}>
+                      <span className="break-words">{item.name}</span>
+                      {item.isTeam && (
+                        <span className="text-[10px] text-slate-500 font-normal mt-0.5 break-words">
+                          {item.players.map(p => p.name).join(' & ')}
+                        </span>
+                      )}
+                    </div>
                     {hasStreak && !isInactive && <Flame className="w-4 h-4 text-orange-500 fill-orange-500 animate-pulse ml-1 shrink-0" />}
-                    {isPlaying && !isInactive && <span className={`text-[9px] px-1.5 py-0.5 rounded ml-1 shadow-sm border shrink-0 mt-1 md:mt-0 ${getCourtStyle(p.court)}`}>{cName}</span>}
+                    {isPlaying && !isInactive && cName && showCourtTags && <span className={`text-[9px] px-1.5 py-0.5 rounded ml-1 shadow-sm border shrink-0 mt-1 md:mt-0 ${getCourtStyle(pCourt)}`}>{cName}</span>}
                   </td>
-                  <td className="px-2 py-4 text-center text-slate-400 font-mono text-[13px]">{s.games}</td>
                   <td className="px-2 py-4 text-center text-slate-300 font-mono text-[13px] whitespace-nowrap">{s.wins}-{s.losses}-{s.ties}</td>
-                  <td className={clsx("px-2 py-4 text-center font-mono text-[13px] font-bold", s.diff > 0 ? "text-green-400" : s.diff < 0 ? "text-red-400" : "text-slate-500")}>
-                    {s.diff > 0 ? `+${s.diff}` : s.diff}
-                  </td>
-                  {(winBonusCfg > 0 || restBonusCfg > 0) && (
-                    <td className="px-2 py-4 text-center text-blue-400/70 font-mono text-[12px]">
-                      +{(s.wins * winBonusCfg) + (s.rests * restBonusCfg)}
-                    </td>
-                  )}
                   <td className="px-4 py-4 text-center font-bold text-emerald-400 font-mono text-[16px] bg-slate-900/30">
                     {s.totalPts}
                   </td>
