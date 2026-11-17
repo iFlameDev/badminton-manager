@@ -15,6 +15,8 @@ export default function SetupView() {
   const [localCourtNames, setLocalCourtNames] = useState(customCourtNames);
   
   const [playerRows, setPlayerRows] = useState([]);
+  const [bulkPlayersText, setBulkPlayersText] = useState('');
+  const [showBulkInput, setShowBulkInput] = useState(false);
   const [localTeams, setLocalTeams] = useState([]);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
@@ -117,6 +119,61 @@ export default function SetupView() {
     setTimeout(() => {
       inputRefs.current[newId]?.focus();
     }, 50);
+  };
+
+  const handleBulkImport = () => {
+    const lines = bulkPlayersText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (lines.length === 0) {
+      toast.error('Masukkan setidaknya satu nama pemain.');
+      return;
+    }
+
+    const importedPlayers = [];
+    const invalidLines = [];
+    lines.forEach((line, index) => {
+      if (isMarked) {
+        const markedMatch = line.match(/^(.+?)\s+-\s+([A-D])$/i);
+        if (markedMatch) {
+          importedPlayers.push({
+            name: markedMatch[1].trim(),
+            tier: markedMatch[2].toUpperCase()
+          });
+        } else if (line.includes(' - ')) {
+          invalidLines.push(index + 1);
+        } else {
+          importedPlayers.push({ name: line, tier: 'B' });
+        }
+      } else {
+        importedPlayers.push({ name: line, tier: 'B' });
+      }
+    });
+
+    if (invalidLines.length > 0) {
+      toast.error(`Format baris ${invalidLines.join(', ')} tidak valid. Gunakan "Nama - A/B/C/D" untuk mode marked.`);
+      return;
+    }
+
+    setPlayerRows(prev => {
+      const rows = prev.filter(row => row.name.trim() !== '');
+      const usedIds = new Set(rows.map(row => row.id));
+      let nextId = Date.now();
+      const newRows = importedPlayers.map(player => {
+        while (usedIds.has(nextId)) nextId++;
+        const id = nextId++;
+        usedIds.add(id);
+        return {
+          id,
+          name: player.name,
+          tier: player.tier,
+          isInactive: false,
+          pid: null
+        };
+      });
+
+      return [...rows, ...newRows];
+    });
+    setBulkPlayersText('');
+    toast.success(`${importedPlayers.length} pemain berhasil ditambahkan.`);
   };
 
   const updateRow = (id, field, value) => {
@@ -300,12 +357,47 @@ export default function SetupView() {
         <div className="bg-slate-700/30 p-4 md:p-5 rounded-xl border border-slate-600 flex flex-col min-w-0 mb-6">
           <div className="flex justify-between items-center mb-4">
             <label className="block text-sm font-bold text-slate-400 shrink-0">Data Pemain & Team</label>
-            <button onClick={() => setShowTeamModal(true)} disabled={isDisabled} className="text-xs bg-slate-600/80 hover:bg-slate-500 text-white px-3 py-2 rounded-lg transition font-bold shadow flex items-center gap-1.5 shrink-0 disabled:opacity-50">
-              <Plus className="w-4 h-4"/> Set Team
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkInput(prev => !prev)}
+                disabled={isDisabled}
+                className="text-xs bg-emerald-800/80 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg transition font-bold shadow flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+              >
+                <List className="w-4 h-4" /> {showBulkInput ? 'Tutup Bulk' : 'Input Bulk'}
+              </button>
+              <button onClick={() => setShowTeamModal(true)} disabled={isDisabled} className="text-xs bg-slate-600/80 hover:bg-slate-500 text-white px-3 py-2 rounded-lg transition font-bold shadow flex items-center gap-1.5 shrink-0 disabled:opacity-50">
+                <Plus className="w-4 h-4"/> Set Team
+              </button>
+            </div>
           </div>
           
           <div className="space-y-2 flex-grow min-w-0 w-full overflow-hidden">
+            {showBulkInput && (
+              <div className="rounded-lg border border-slate-600 bg-slate-900/70 p-3 space-y-2">
+                <label htmlFor="bulk-player-input" className="block text-xs font-bold text-slate-300">Input banyak pemain</label>
+                <p className="text-[10px] text-slate-500">
+                  {isMarked ? 'Satu pemain per baris. Format Nama - Marked (A/B/C/D); tanpa marked akan menggunakan B.' : 'Satu nama pemain per baris.'}
+                </p>
+                <textarea
+                  id="bulk-player-input"
+                  value={bulkPlayersText}
+                  onChange={(e) => setBulkPlayersText(e.target.value)}
+                  placeholder={isMarked ? 'Andi - A\nBudi\nCitra - C' : 'Andi\nBudi\nCitra'}
+                  disabled={isDisabled}
+                  rows={4}
+                  className="w-full resize-y bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white text-sm outline-none focus:ring-1 focus:ring-emerald-500 transition placeholder-slate-500 disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={handleBulkImport}
+                  disabled={isDisabled || !bulkPlayersText.trim()}
+                  className="w-full sm:w-auto text-xs bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg transition font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Tambahkan pemain
+                </button>
+              </div>
+            )}
             <div className="text-[10px] font-normal text-slate-500 mb-2 uppercase tracking-wide">* Tekan 'Enter' di kolom nama untuk baris baru</div>
             <div className="space-y-2 w-full">
               {playerRows.map((row, index) => {

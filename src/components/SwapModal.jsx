@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTournamentStore } from '../store/useTournamentStore';
-import { X } from 'lucide-react';
+import { Shuffle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { toast } from '../store/useToastStore';
@@ -16,7 +16,7 @@ function getTierStyle(tier) {
 }
 
 export default function SwapModal({ isOpen, matchKey, onClose }) {
-  const { matches, players, teams, customCourtNames, executeSwap, config, isHost, showMarkedTags } = useTournamentStore();
+  const { matches, players, teams, customCourtNames, executeSwap, reshuffleMatch, config, showMarkedTags } = useTournamentStore();
   const showMarking = config.type.includes('marked') && showMarkedTags;
   const [selectedSlot, setSelectedSlot] = useState(null); // { team: 1|2, index: 0|1 }
   const [lastSwappedSlot, setLastSwappedSlot] = useState(null); // String representation to animate
@@ -51,6 +51,10 @@ export default function SwapModal({ isOpen, matchKey, onClose }) {
   ];
 
   const cName = customCourtNames[m.court] || `Court ${m.court}`;
+  const canReshuffle = [...m.t1, ...m.t2].every(id => id !== null) &&
+    new Set([...m.t1, ...m.t2]).size === 4 &&
+    m.score1 === null &&
+    m.score2 === null;
 
   // Get available replacement players
   const currentPlayersInMatch = [...m.t1, ...m.t2].filter(id => id !== null);
@@ -250,11 +254,23 @@ export default function SwapModal({ isOpen, matchKey, onClose }) {
             </div>
           </div>
           
-          <div className="flex mt-auto shrink-0">
+          <div className="flex gap-2 mt-auto shrink-0">
+            <button
+              type="button"
+              onClick={() => reshuffleMatch(matchKey)}
+              disabled={!canReshuffle}
+              className="bg-indigo-700/80 hover:bg-indigo-600 text-white font-bold px-3 sm:px-4 py-3.5 rounded-xl transition shadow border border-indigo-500/60 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Acak ulang susunan bracket court ini"
+              aria-label="Acak ulang bracket"
+            >
+              <Shuffle className="w-4 h-4" />
+              <span className="hidden sm:inline">Reshuffle</span>
+              <span className="sm:hidden">Acak</span>
+            </button>
             <button 
               onClick={onClose} 
               disabled={m.t1.includes(null) || m.t2.includes(null)}
-              className="w-full bg-slate-700/80 hover:bg-slate-600 text-white font-bold py-3.5 rounded-xl transition shadow border border-slate-600 tracking-wide disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 bg-slate-700/80 hover:bg-slate-600 text-white font-bold py-3.5 rounded-xl transition shadow border border-slate-600 tracking-wide disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {(m.t1.includes(null) || m.t2.includes(null)) ? "Pilih pemain untuk slot kosong" : "Selesai / Tutup"}
             </button>

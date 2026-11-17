@@ -411,6 +411,61 @@ export const useTournamentStore = create((set, get) => ({
       updatedState.generateNextRound();
     }
 
+    if (state.isTournamentStarted && state.currentRound === 1) {
+      const current = get();
+      const roundOneMatches = Object.values(current.matches).filter((match) => match.round === 1);
+      const hasScoredMatch = roundOneMatches.some(
+        (match) => match.score1 !== null && match.score2 !== null
+      );
+      const missingCourts = Array.from(
+        { length: current.numCourts },
+        (_, index) => index + 1
+      ).filter((courtId) => !roundOneMatches.some((match) => match.court === courtId));
+
+      if (!hasScoredMatch && missingCourts.length > 0) {
+        const availablePlayers = current.players.filter(
+          (player) => !player.isWalkout && player.status === 'rest'
+        );
+        const { stats } = current.getLeaderboardStats();
+        const draftedCourts = current.draftCourts(
+          availablePlayers,
+          stats,
+          missingCourts.length,
+          current.teams
+        );
+
+        if (draftedCourts.length > 0) {
+          const nextMatches = { ...current.matches };
+          const nextPlayers = current.players.map((player) => ({ ...player }));
+
+          draftedCourts.forEach((courtMatch, index) => {
+            const courtId = missingCourts[index];
+            nextMatches[`r1-c${courtId}`] = {
+              round: 1,
+              court: courtId,
+              t1: courtMatch.t1,
+              t2: courtMatch.t2,
+              score1: null,
+              score2: null,
+              timestamp: Date.now()
+            };
+
+            [...courtMatch.t1, ...courtMatch.t2].forEach((id) => {
+              const player = nextPlayers.find((item) => item.id === id);
+              if (player) {
+                player.status = 'playing';
+                player.court = courtId;
+              }
+            });
+          });
+
+          set({ matches: nextMatches, players: nextPlayers, activeRoundTab: 1 });
+          get().syncToSupabase();
+          toast.success(`${draftedCourts.length} court kosong berhasil dibuat otomatis.`);
+        }
+      }
+    }
+
     const finalState = get();
     const now = new Date().toISOString();
     
@@ -760,6 +815,81 @@ export const useTournamentStore = create((set, get) => ({
 
     set({ matches: nextMatches, players: nextPlayers });
     get().syncToSupabase();
+  },
+
+  reshuffleMatch: (matchKey) => {
+    const state = get();
+    const match = state.matches[matchKey];
+    if (!match) return;
+    if (match.score1 !== null || match.score2 !== null) {
+      toast.error('Bracket tidak bisa diacak ulang setelah skor pertandingan diisi.');
+      return;
+    }
+
+    const playerIds = [...match.t1, ...match.t2];
+    if (
+      match.t1.length !== 2 ||
+      match.t2.length !== 2 ||
+      playerIds.some((id) => id === null) ||
+      new Set(playerIds).size !== 4
+    ) {
+      toast.error('Bracket hanya bisa diacak ulang jika empat slot pemain sudah terisi.');
+      return;
+    }
+
+    const entities = [];
+    const groupedPlayerIds = new Set();
+    (state.teams || []).forEach((team) => {
+      const [first, second] = team.playerIds;
+      if (
+        playerIds.includes(first) &&
+        playerIds.includes(second) &&
+        !groupedPlayerIds.has(first) &&
+        !groupedPlayerIds.has(second)
+      ) {
+        entities.push([first, second]);
+        groupedPlayerIds.add(first);
+        groupedPlayerIds.add(second);
+      }
+    });
+    playerIds.forEach((id) => {
+      if (!groupedPlayerIds.has(id)) entities.push([id]);
+    });
+
+    const layouts = [];
+    for (let mask = 1; mask < (1 << entities.length) - 1; mask++) {
+      if ((mask & 1) === 0) continue;
+
+      const firstSide = [];
+      const secondSide = [];
+      entities.forEach((entity, index) => {
+        (mask & (1 << index) ? firstSide : secondSide).push(...entity);
+      });
+
+      if (firstSide.length !== 2 || secondSide.length !== 2) continue;
+      layouts.push({ t1: firstSide, t2: secondSide });
+      layouts.push({ t1: secondSide, t2: firstSide });
+    }
+
+    const alternatives = layouts.filter(
+      (layout) =>
+        JSON.stringify(layout.t1) !== JSON.stringify(match.t1) ||
+        JSON.stringify(layout.t2) !== JSON.stringify(match.t2)
+    );
+    if (alternatives.length === 0) {
+      toast.error('Tidak ada susunan bracket lain yang valid untuk pemain di court ini.');
+      return;
+    }
+
+    const shuffled = alternatives[Math.floor(Math.random() * alternatives.length)];
+    set({
+      matches: {
+        ...state.matches,
+        [matchKey]: { ...match, t1: shuffled.t1, t2: shuffled.t2 }
+      }
+    });
+    get().syncToSupabase();
+    toast.success('Bracket court berhasil diacak ulang.');
   },
 
   togglePlayerWalkout: (playerId) => {
